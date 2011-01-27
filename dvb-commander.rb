@@ -146,7 +146,7 @@ def search(channels,*pattern)
     (channels.values).each do |array_of_programs|
       array_of_programs.each do |program|
         if program.name.include?(pattern[0]) then 
-           response << program
+           response << program.to_s
         end 
       end
     end
