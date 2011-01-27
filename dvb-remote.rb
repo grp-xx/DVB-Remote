@@ -37,6 +37,10 @@ host = ARGV[0]
 
 # Begin main program
 
+server = TCPSocket.open(host, PORT)  # open connection for each line.... like http 1.0
+
+server.puts "RubyTerminal"
+
 CLI_prompt = "DVB-remote > "
 
 # server = TCPSocket.open(host, PORT)  # open connection for each line.... like http 1.0
@@ -47,7 +51,7 @@ CLI_prompt = "DVB-remote > "
 STDOUT.print CLI_prompt
 line = STDIN.gets
 
-server = TCPSocket.open(host, PORT)  # open connection for each line.... like http 1.0
+
 
 while (line.downcase.split)[0] != "quit" do
   

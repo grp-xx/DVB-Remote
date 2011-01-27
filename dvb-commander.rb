@@ -1,8 +1,9 @@
-#! /usr/bin/ruby
+#! /usr/bin/ruby -w
 
 require 'socket'
 SERVER_IP_ADDRESS = "131.114.53.243"
 PORT = "8100"
+RUBY_TERMINAL = false
 
 ALLOWED_COMMANDS = %w[help h list l search s mux m]
 HELP_COMMANDS = %w[help h]
@@ -53,7 +54,7 @@ def help(*s)
     if ALLOWED_COMMANDS.include? s[0] then
       message = send "help_#{s[0]}" 
     else
-      message "Sorry: no entry..."
+      message = "Sorry: no entry..."
     end
   end
   return message
@@ -141,52 +142,100 @@ def commanders(channels,line)
 end
 
 
-# Begin main program
-
-channels = retrieve("channels.conf")
-
-server = TCPServer.open(PORT)
-STDOUT.puts "DVB Commander listenining on TCP port #{PORT}" if server != nil
-
-# client = server.accept
-# client.puts "Connected to DVB Commander at #{SERVER_IP_ADDRESS}:#{PORT}"
-# client.flush
-# client.close
-
-begin 
-
-client = server.accept
-puts "Connected to DVB Commander from #{client}"
-local, peer = client.addr, client.peeraddr 
-
-loop do
-  
-  request = Marshal::load(client)
-  STDOUT.print "Successfully received command from #{peer[2]}:#{peer[1]}" 
-  STDOUT.puts " using local port #{local[1]}"
-   
-  line = request.split
-  command=line[0]
-  case
-      #when !(Object.respond_to? command, true)  # true is for private methods of Object Class RISKY - use next condition instead!!!!
-      when !(ALLOWED_COMMANDS.include? command) 
-        Marshal::dump("Command not available",client)
-      when (HELP_COMMANDS.include? command)
-        message = helpers(line)
-        Marshal::dump(message,client)
-      else
-        response = commanders(channels,line)
-        Marshal::dump(response,client)
-
+def start_ruby_cli(channels,server,client,line)
+  loop do
+          request = Marshal::load(client)           
+          line = request.split
+          command=line[0]
+          case
+              when !(ALLOWED_COMMANDS.include? command) 
+                Marshal::dump("Command not available",client)
+              when (HELP_COMMANDS.include? command)
+                message = helpers(line)
+                Marshal::dump(message,client)
+              else
+                response = commanders(channels,line)
+                Marshal::dump(response,client)
   end
 end
-#end
 
-rescue
-	STDERR.puts "Connection to client closed"
-	STDOUT.puts "DVB Commander listenining on TCP port #{PORT}" if server != nil
-	retry
 end
+
+
+def start_telnet_cli(channels,server,client,line)  
+    
+    loop do
+          command = line[0]
+          case
+            when !(ALLOWED_COMMANDS.include? command) 
+              client.puts "Command not available"
+              client.flush
+            when (HELP_COMMANDS.include? command)
+              message = helpers(line)
+              client.puts message
+              client.flush
+            else
+              response = commanders(channels,line)
+              client.puts response
+              client.flush
+          end
+          
+          client.close_write
+          client = server.accept
+          while (request = client.gets) == nil do 
+            puts "Client quit unexpectedly"
+            client.close
+            client = server.accept
+          end
+          line = request.split
+    end
+end
+
+
+
+# Begin main program
+
+      channels = retrieve("channels.conf")
+
+
+
+      server = TCPServer.open(PORT)
+      STDOUT.puts "DVB Commander listenining on TCP port #{PORT}" if server != nil
+
+begin
+      client = server.accept
+      puts "Connected to DVB Commander from #{client}"
+      while (request = client.gets) == nil do 
+        puts "Client quit unexpectedly"
+        client.close
+        client = server.accept
+      end
+
+      local, peer = client.addr, client.peeraddr 
+      STDOUT.print "Successfully received command from #{peer[2]}:#{peer[1]}" 
+      STDOUT.puts " using local port #{local[1]}"
+
+      line = request.split
+      command=line[0]
+        
+      case 
+        when command == "RubyTerminal" 
+          start_ruby_cli(channels,server,client,line)
+        else
+          start_telnet_cli(channels,server,client,line)
+      end
+      
+rescue
+      STDERR.puts "Connection to client closed"
+      STDOUT.puts "DVB Commander listenining on TCP port #{PORT}" if server != nil
+      #raise
+      retry
+end
+
+  
+  
+
+
 
 
 
