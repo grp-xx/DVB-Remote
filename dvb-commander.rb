@@ -1,7 +1,7 @@
 #! /usr/bin/ruby -w
 
 require 'socket'
-SERVER_IP_ADDRESS = "131.114.53.243"
+SERVER_IP_ADDRESS = "127.0.0.1"
 PORT = "8100"
 RUBY_TERMINAL = false
 
@@ -31,6 +31,30 @@ class Programs
     "Name: #{@name}\nMUX: #{@frequency}\nInversion: #{@inversion}  Bandwidth: #{@bandwidth}  FEC: #{@fec}  FEC AUTO: #{@fec_auto}\nModulation: #{@modulation}  Transmission mode: #{@t_mode}  Guard Interval: #{@guard_interval}  Hierarchy: #{@hierarchy}\nVideo PID: #{@vpid}  Audio PID #{@apid}  Service ID: #{@sid}\n"
   end
 end
+
+class Code
+        EOK = 0
+        ENAVAIL = 1
+end
+
+class Message
+  attr_accessor :type, :content
+  
+  def initialize(type=Code::EOK)
+          @type, @content = type, []
+  end
+  
+  def fill(text)
+          (@content ||= []) << text
+  end
+  
+  def to_s
+          "Message Type: #{@type}\n" + @content.join("\n")
+  end
+end
+     
+
+
 
 def retrieve(file_in)   #generate a hash with key = mux frequency => [program]
     f = File.open("channels.conf")
@@ -143,40 +167,47 @@ end
 
 
 def start_ruby_cli(channels,server,client,line)
+        
+        
   loop do
           request = Marshal::load(client)           
           line = request.split
           command=line[0]
           case
               when !(ALLOWED_COMMANDS.include? command) 
-                Marshal::dump("Command not available",client)
+                err = Message.new(Code::ENAVAIL)
+                err.fill("Command not available")
+                Marshal::dump(err,client)
               when (HELP_COMMANDS.include? command)
-                message = helpers(line)
-                Marshal::dump(message,client)
+                      msg = Message.new(Code::EOK)
+                      msg.fill(helpers(line))
+                      Marshal::dump(msg,client)
               else
-                response = commanders(channels,line)
-                Marshal::dump(response,client)
+                      msg = Message.new(Code::EOK)                    
+                      msg.fill(commanders(channels,line))
+                      Marshal::dump(msg,client)                     
   end
 end
 
 end
 
 
-def start_telnet_cli(channels,server,client,line)  
+def start_telnet_cli(channels,server,client,line)      
+   
     
     loop do
           command = line[0]
           case
-            when !(ALLOWED_COMMANDS.include? command) 
-              client.puts "Command not available"
+            when !(ALLOWED_COMMANDS.include? command)
+              client.puts  "Command not available\n" 
               client.flush
             when (HELP_COMMANDS.include? command)
               message = helpers(line)
-              client.puts message
+              client.puts message 
               client.flush
             else
               response = commanders(channels,line)
-              client.puts response
+              client.puts response 
               client.flush
           end
           
@@ -212,14 +243,16 @@ begin
       end
 
       local, peer = client.addr, client.peeraddr 
-      STDOUT.print "Successfully received command from #{peer[2]}:#{peer[1]}" 
-      STDOUT.puts " using local port #{local[1]}"
 
       line = request.split
       command=line[0]
         
       case 
-        when command == "RubyTerminal" 
+        when command == "RubyTerminal"
+          msg=Message.new(Code::EOK)
+          msg.fill("Connected to Ruby Terminal on #{peer[2]}:#{peer[1]} using local port #{local[1]}")
+          STDOUT.puts msg
+          Marshal::dump(msg,client)
           start_ruby_cli(channels,server,client,line)
         else
           start_telnet_cli(channels,server,client,line)
@@ -228,8 +261,8 @@ begin
 rescue
       STDERR.puts "Connection to client closed"
       STDOUT.puts "DVB Commander listenining on TCP port #{PORT}" if server != nil
-      #raise
-      retry
+      #raise    # uncomment to debug
+      retry     # comment to debug
 end
 
   
