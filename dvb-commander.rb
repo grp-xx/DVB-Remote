@@ -8,7 +8,9 @@ PORT = "8100"
 RUBY_TERMINAL = false
 XML_PROGRAMS_FILE = "programs.xml"
 
-ALLOWED_COMMANDS = %w[help h list l search s mux m live]
+ALLOWED_COMMANDS = %w[help h list l search s mux m stream]
+ALLOWED_STREAM_ACTIONS = %w[live tune add remove]
+
 HELP_COMMANDS = %w[help h]
 
 class Programs
@@ -171,16 +173,49 @@ end
 
 alias s search
 
-def live(channels)
+def live(*extra)
         live_file = File.open(XML_PROGRAMS_FILE,'r')
         live_programs = Nokogiri::XML(live_file)
         live_file.close
         response = []
         live_programs.xpath("/program-list/program/program-name").each do |node|    # oppure dco.search.().each...
-                        response << node.text
+                        response << "Streaming #{node.text} on multiacst group #{node.parent.xpath('./destination/ip-address').text}"
                 end
         return response
 end
+
+def show(live_programs)
+        response = []
+        live_programs.xpath("/program-list/program/program-name").each do |node|    # oppure dco.search.().each...
+                        response << "Streaming #{node.text} on multiacst group #{node.parent.xpath('./destination/ip-address').text}"
+                end
+        return response
+end
+
+def stream(channels, *params)
+        # input param channels is useless...
+        
+        
+        action = params[0] if params.length != 0
+        
+        
+        live_file = File.open(XML_PROGRAMS_FILE,'r')
+        live_programs = Nokogiri::XML(live_file)
+        live_file.close
+        
+        case
+                when params.length == 1 
+                        response = ALLOWED_STREAM_ACTIONS.include?(action) ? send(action.to_sym, live_file) : "Malformed Request"
+  
+                        
+                when params.length >= 1 
+                        response = ALLOWED_STREAM_ACTIONS.include?(action) ? send(action.to_sym, live_file, *params[1..params.length-1] ) : "Malformed Request"
+ 
+                else
+                        response = "Malformed Request"
+        end
+end
+
 
 def commanders(channels,line)
   command = line[0]
@@ -212,15 +247,13 @@ def start_ruby_cli(channels,server,client,line)
                       msg = Message.new(Code::EOK)                    
                       msg.fill(commanders(channels,line))
                       Marshal::dump(msg,client)                     
+           end
   end
-end
 
 end
 
 
 def start_telnet_cli(channels,server,client,line)      
-   
-    
     loop do
           command = line[0]
           case
