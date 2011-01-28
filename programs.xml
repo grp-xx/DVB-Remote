@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<program-list>
+
+  <program>
+    <program-name>Das Erste</program-name>
+    <destination><ip-address>239.192.1.1</ip-address></destination>
+  </program>
+
+  <program>
+    <program-name>Bayerisches FS Sud</program-name>
+    <destination><ip-address>ff05::1234</ip-address></destination>
+  </program>
+
+  <program>
+    <program-name>hr-fernsehen</program-name>
+    <destination>
+      <ip-address>239.192.1.2</ip-address>
+      <ttl>2</ttl>
+    </destination>
+  </program>
+
+  <program>
+    <program-name>Bayerisches FS Nord</program-name>
+    <destination>
+      <ip-address>239.192.1.3</ip-address>
+      <port>6666</port>
+    </destination>
+  </program>
+
+  <program>
+    <program-name>WDR Köln</program-name>
+    <destination>
+      <ip-address>239.192.1.4</ip-address>
+    </destination>
+    <destination>
+      <ip-address>239.192.2.4</ip-address>
+    </destination>
+  </program>
+
+  <program>
+    <program-name>SWR Fernsehen BW</program-name>
+    <destination>
+      <ip-address>239.192.1.5</ip-address>
+      <sap><name>SWR Fernsehen BW</name></sap>
+      <sap>
+        <name>BaWü-TV</name>
+        <group-name>TV (alternative names)</group-name>
+      </sap>
+    </destination>
+  </program>
+
+</program-list>

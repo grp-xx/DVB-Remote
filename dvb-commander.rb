@@ -1,11 +1,14 @@
 #! /usr/bin/ruby -w
 
+require 'rubygems'
 require 'socket'
+require 'nokogiri'
 SERVER_IP_ADDRESS = "127.0.0.1"
 PORT = "8100"
 RUBY_TERMINAL = false
+XML_PROGRAMS_FILE = "programs.xml"
 
-ALLOWED_COMMANDS = %w[help h list l search s mux m]
+ALLOWED_COMMANDS = %w[help h list l search s mux m live]
 HELP_COMMANDS = %w[help h]
 
 class Programs
@@ -25,6 +28,8 @@ class Programs
     @vpid = vpid                          # video pid
     @apid = apid                          # audio pid
     @sid = sid                            # service ID
+    @group = (vpid == 0)? "Radio" : "TV"
+    @ip_address = []
   end
   
   def to_s
@@ -122,18 +127,28 @@ end
 
 
 def list(channels,*frequency)
-  if frequency.length == 0 
+  if frequency.length == 0 then
     response = channels.to_s
   else
-    response = ""
-    frequency.each {|f|; message += channels[f]}
+    frequency.each do |f| 
+            channels[f].each {|l| (response ||= []) << l.to_s}
+    end
   end
+  return response
 end
 
 alias l list 
 
-def mux(channels,*extra)  #Extra paramteres are simply ignored
-  return channels.keys
+def mux(channels,*freq)  #Extra paramteres are simply ignored
+  response = []
+  if freq.length == 0 then
+          response = channels.keys
+  else 
+          freq.each do |f| 
+                  channels[f].each {|l| response << l.name}
+          end
+  end
+  return response
 end
 
 alias m mux
@@ -155,6 +170,17 @@ def search(channels,*pattern)
 end
 
 alias s search
+
+def live(channels)
+        live_file = File.open(XML_PROGRAMS_FILE,'r')
+        live_programs = Nokogiri::XML(live_file)
+        live_file.close
+        response = []
+        live_programs.xpath("/program-list/program/program-name").each do |node|    # oppure dco.search.().each...
+                        response << node.text
+                end
+        return response
+end
 
 def commanders(channels,line)
   command = line[0]
@@ -228,8 +254,6 @@ end
 
       channels = retrieve("channels.conf")
 
-
-
       server = TCPServer.open(PORT)
       STDOUT.puts "DVB Commander listenining on TCP port #{PORT}" if server != nil
 
@@ -261,8 +285,8 @@ begin
 rescue
       STDERR.puts "Connection to client closed"
       STDOUT.puts "DVB Commander listenining on TCP port #{PORT}" if server != nil
-      #raise    # uncomment to debug
-      retry     # comment to debug
+      raise    # uncomment to debug
+      # retry     # comment to debug
 end
 
   
