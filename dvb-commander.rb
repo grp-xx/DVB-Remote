@@ -9,7 +9,7 @@ RUBY_TERMINAL = false
 XML_PROGRAMS_FILE = "programs.xml"
 
 ALLOWED_COMMANDS = %w[help h list l search s mux m stream]
-ALLOWED_STREAM_ACTIONS = %w[live tune add remove]
+ALLOWED_STREAM_ACTIONS = %w[show live tune add remove]
 
 HELP_COMMANDS = %w[help h]
 
@@ -156,7 +156,6 @@ end
 alias m mux
 
 
-
 def search(channels,*pattern)
   response = []
   if pattern.length >= 1 then
@@ -173,10 +172,7 @@ end
 
 alias s search
 
-def live(*extra)
-        live_file = File.open(XML_PROGRAMS_FILE,'r')
-        live_programs = Nokogiri::XML(live_file)
-        live_file.close
+def live(live_programs)
         response = []
         live_programs.xpath("/program-list/program/program-name").each do |node|    # oppure dco.search.().each...
                         response << "Streaming #{node.text} on multiacst group #{node.parent.xpath('./destination/ip-address').text}"
@@ -192,6 +188,25 @@ def show(live_programs)
         return response
 end
 
+def add(live_programs,*data)
+        
+end
+
+def remove(live_programs,*data)
+        # Incomplete... to be protected against misuses...
+        stream_to_drop = data.join(" ")
+        message = "Can't remove stream \"#{stream_to_drop}\""
+        live_programs.xpath("/program-list/program/program-name").each do |node|    # oppure dco.search.().each...
+                if node.text == stream_to_drop then
+                        node.parent.remove
+                        message = "Sussessfully removed stream \"#{stream_to_drop}\""
+                end
+        end
+        return message
+        # To Do: missing relaunch dvbstream!!!
+end
+
+
 def stream(channels, *params)
         # input param channels is useless...
         
@@ -205,15 +220,25 @@ def stream(channels, *params)
         
         case
                 when params.length == 1 
-                        response = ALLOWED_STREAM_ACTIONS.include?(action) ? send(action.to_sym, live_file) : "Malformed Request"
+                        response = ALLOWED_STREAM_ACTIONS.include?(action) ? send(action.to_sym, live_programs) : "Malformed Request"
   
                         
                 when params.length >= 1 
-                        response = ALLOWED_STREAM_ACTIONS.include?(action) ? send(action.to_sym, live_file, *params[1..params.length-1] ) : "Malformed Request"
+                        response = ALLOWED_STREAM_ACTIONS.include?(action) ? send(action.to_sym, live_programs, *params[1..params.length-1] ) : "Malformed Request"
  
                 else
                         response = "Malformed Request"
         end
+        
+
+        
+        live_file = File.open(XML_PROGRAMS_FILE,'w')
+        live_programs.write_xml_to(live_file)
+        live_file.close
+        
+        return response
+ 
+        
 end
 
 

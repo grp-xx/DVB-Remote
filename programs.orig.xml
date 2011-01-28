@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <program-list>
 
-  
+  <program>
+    <program-name>Das Erste</program-name>
+    <destination><ip-address>239.192.1.1</ip-address></destination>
+  </program>
 
   <program>
     <program-name>Bayerisches FS Sud</program-name>
