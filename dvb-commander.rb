@@ -3,6 +3,8 @@
 require 'rubygems'
 require 'socket'
 require 'nokogiri'
+include ObjectSpace
+
 SERVER_IP_ADDRESS = "127.0.0.1"
 PORT = "8100"
 RUBY_TERMINAL = false
@@ -12,10 +14,12 @@ DVB_FRONTEND_0 = "/dev/dvb/adapter0/frontend0"
 DVB_DEMUX_0 = "/dev/dvb/adapter0/demux0"
 DVB_DVR_0 = "/dev/dvb/adapter0/dvr0"
 
-ALLOWED_COMMANDS = %w[help h list l search s mux m program p]
+COMMANDER_COMMANDS = %w[help h list l search s mux m program p]
 ALLOWED_STREAM_ACTIONS = %w[show live tune add remove]
+ALLOWED_SERVER_ACTIONS = %w[status start stop restart]
 
 HELP_COMMANDS = %w[help h]
+SERVER_COMMANDS = %w[server]
 
 class Programs
   attr_accessor :name, :frequency, :inversion, :bandwidth, :code_rate_hp, :code_rate_lp, :constellation, :transmission_mode, :guard_interval, :hierarchy_information, :apid, :vpid, :tpid
@@ -63,6 +67,7 @@ end
 class Code
         EOK = 0
         ENAVAIL = 1
+        PID = 2
 end
 
 class Message
@@ -98,6 +103,41 @@ class Stream
         
 end
 
+class Task
+      attr_reader :pid
+      def initialize(*command_line)
+            @command = command_line
+      end
+      
+      def start
+            @pid = Process.fork { exec @command.join(' ') }
+            ObjectSpace.define_finalizer(self, self.class.finalize(@pid))
+      end
+      
+      def stop(sig = 'TERM')
+            Process.kill(sig, @pid)
+            Process.wait
+      end
+      
+      def restart
+            stop
+            start
+      end
+      
+      # def self.Create(*args)
+      #       p = Task.new([args])
+      # end
+      
+     def self.finalize(pid)   # Class method used to finalize!!!! in case the oject gets garbage collected...
+            proc { |id|  begin Process.kill('TERM',pid) rescue end } 
+     end
+      
+end
+
+######################################################################
+################ Section of generic utilities ########################
+######################################################################
+
 
 def DVB_retrieve(file_in)   #generate a hash with key = mux frequency => [program]
     f = File.open("channels.conf")
@@ -108,6 +148,16 @@ def DVB_retrieve(file_in)   #generate a hash with key = mux frequency => [progra
       (channels[program.frequency] ||= []) << program
     end
     return channels
+end
+
+def get_mux(channels,prog_name)
+        mux = []
+        (channels.keys).each do |freq|
+                channels[freq].each do |p|
+                        mux << freq if p.name == prog_name
+                end
+        end
+        return mux
 end
 
 ######################################################################
@@ -216,16 +266,6 @@ def search(channels,*pattern)
 end
 
 alias s search
-
-def get_mux(channels,prog_name)
-        mux = []
-        (channels.keys).each do |freq|
-                channels[freq].each do |p|
-                        mux << freq if p.name == prog_name
-                end
-        end
-        return mux
-end
                                 
 
 def nowplaying(channels)
@@ -244,7 +284,7 @@ def nowplaying(channels)
 end
 
 
-def show()
+def show(channels)
         
         live_file = File.open(XML_PROGRAMS_FILE,'r')
         live_programs = Nokogiri::XML(live_file)
@@ -259,11 +299,11 @@ def show()
         return msg    
 end
 
-def add(*data)
+def add(channels, *data)
         
 end
 
-def remove(*data)
+def remove(channels, *data)
         # Incomplete... to be protected against misuses...
         live_file = File.open(XML_PROGRAMS_FILE,'r')
         live_programs = Nokogiri::XML(live_file)
@@ -286,7 +326,6 @@ def remove(*data)
         live_programs.write_xml_to(live_file)
         live_file.close
         
-        # To Do: missing relaunch dvbstream!!!
         return msg      
         
 end
@@ -304,24 +343,24 @@ def program(channels, *params)
         case
                 when params.length == 1
                         if ALLOWED_STREAM_ACTIONS.include?(action) then
-                                msg = send(action.to_sym)
+                                msg = send(action.to_sym,channels)
                                 # msg = Message.new(Code::EOK)
                                 # msg.fill(response)
                                 
                         else
                                 response = "Malformed Request"
-                                msg = Message.new(Code::Code::ENAVAIL)
+                                msg = Message.new(Code::ENAVAIL)
                                 msg.fill(response)
-                                
                         end
+                        
                 when params.length >= 1 
                         if ALLOWED_STREAM_ACTIONS.include?(action) then
-                                msg = send(action.to_sym, *params[1..params.length-1] )
+                                msg = send(action.to_sym, channels, *params[1..params.length-1] )
                                 # msg = Message.new(Code::EOK)
                                 # msg.fill(response)                              
                         else 
                                 response = "Malformed Request"
-                                msg = Message.new(Code::Code::ENAVAIL)
+                                msg = Message.new(Code::ENAVAIL)
                                 msg.fill(response)
                         end
                 else
@@ -335,6 +374,7 @@ end
 
 alias p program
 
+                
 def commanders(channels,line)
   command = line[0]
   if line.length > 1 then
@@ -344,26 +384,114 @@ def commanders(channels,line)
   end
 end
 
+######################################################################
+################ Section of Server Managers   ########################
+######################################################################
 
-def start_ruby_cli(channels,server,client,line)
+def server_manager(streaming_server,line)        
+        command = line[0]        
+                
+        if line.length > 1 then
+           send command.to_sym, streaming_server, *line[1..line.length-1]
+        else
+           send command.to_sym, streaming_server
+         end
+end
+        
+def start(streaming_server)
+        streaming_server[:dystreamd].start 
+        streaming_server[:dytuned].start 
+        msg = Message.new(Code::PID)
+        msg.fill(streaming_server)
+        return msg
+end
+
+def stop(streaming_server)
+         
+        streaming_server[:dystreamd].stop 
+        streaming_server[:dytuned].stop 
+        msg = Message.new(Code::PID)
+        msg.fill(streaming_server)
+        return msg
+end
+
+def restart(streaming_server)
+        streaming_server[:dystreamd].restart 
+        streaming_server[:dytuned].restart 
+        msg = Message.new(Code::PID)
+        msg.fill(streaming_server)
+        return msg
+end
+
+
+def server(streaming_server, *params)
+        
+        action = params[0] if params.length != 0
+        
+        case
+                when params.length == 1
+                        if ALLOWED_SERVER_ACTIONS.include?(action) then
+                                msg = send action.to_sym, streaming_server
+                                
+                        else
+                                response = "Malformed Request"
+                                msg = Message.new(Code::ENAVAIL)
+                                msg.fill(response)
+                        end
+                        
+                when params.length >= 1 
+                        if ALLOWED_SERVER_ACTIONS.include?(action) then
+                                msg = send action.to_sym, streaming_server, *params[1..params.length-1] 
+                
+                        else 
+                                response = "Malformed Request"
+                                msg = Message.new(Code::ENAVAIL)
+                                msg.fill(response)
+                        end
+                else
+                        msg = Message.new(Code::PID)
+                        msg.fill(streaming_server)
+        end
+                
+        return msg
+        
+end
+
+
+
+######################################################################
+################ Section of CLIs   ###################################
+######################################################################
+
+
+
+
+def start_ruby_cli(channels,server,client,streaming_server,line)
         
         
   loop do
           request = Marshal::load(client)           
           line = request.split
           command=line[0]
+                   
           
           case
-              when !(ALLOWED_COMMANDS.include? command) 
-                      err = Message.new(Code::ENAVAIL)
-                      err.fill("Command not available")
-                      Marshal::dump(err,client)
+              when (COMMANDER_COMMANDS.include? command) 
+                      response = commanders(channels,line)
+                      Marshal::dump(response,client)
+                      streaming_server = response.content if response.type == 'Code::PID'
                       
               when (HELP_COMMANDS.include? command)
                       Marshal::dump(helpers(line),client)
-                      
+              
+              when (SERVER_COMMANDS.include? command)                      
+                      response = server_manager(streaming_server,line)
+                      streaming_server = response.content if response.type == 'Code::PID'
+                      Marshal::dump(response.to_s,client)
               else
-                      Marshal::dump(commanders(channels,line),client)
+                      err = Message.new(Code::ENAVAIL)
+                      err.fill("Command not available")
+                      Marshal::dump(err,client)
                       
            end
   end
@@ -371,21 +499,27 @@ def start_ruby_cli(channels,server,client,line)
 end
 
 
-def start_telnet_cli(channels,server,client,line)      
+def start_telnet_cli(channels,server,client,streaming_server,line)      
     loop do
           command = line[0]
           case
-            when !(ALLOWED_COMMANDS.include? command)
-              client.puts  "Command not available\n" 
-              client.flush
             when (HELP_COMMANDS.include? command)
               message = helpers(line)
               client.puts message 
               client.flush
+            when (SERVER_COMMANDS.include? command)
+                    response = server_manager(streaming_server,line)
+                    streaming_server = response.content if response.type == 'Code::PID'
+                    client.puts response 
+                    client.flush
+            when (COMMANDER_COMMANDS.include? command)
+                    response = commanders(channels,line)
+                    streaming_server = response.content if response.type == 'Code::PID'
+                    client.puts response 
+                    client.flush
             else
-              response = commanders(channels,line)
-              client.puts response 
-              client.flush
+                      client.puts  "Command not available\n" 
+                      client.flush
           end
           
           client.close_write
@@ -400,10 +534,17 @@ def start_telnet_cli(channels,server,client,line)
 end
 
 
+######################################################################
+################ Begin main program  #################################
+######################################################################
 
-# Begin main program
 
       channels = DVB_retrieve("channels.conf")
+      
+      streaming_server = {}
+      streaming_server[:dystreamd] = Task.new("xterm","-bg", "red")
+      streaming_server[:dytuned] = Task.new("xterm","-bg", "blue")
+      
       
       
       # live_file = File.open(XML_PROGRAMS_FILE,'r')
@@ -434,9 +575,9 @@ begin
           msg.fill("Connected to Ruby Terminal on #{peer[2]}:#{peer[1]} using local port #{local[1]}")
           STDOUT.puts msg
           Marshal::dump(msg,client)
-          start_ruby_cli(channels,server,client,line)
+          start_ruby_cli(channels,server,client,streaming_server,line)
         else
-          start_telnet_cli(channels,server,client,line)
+          start_telnet_cli(channels,server,client,streaming_server,line)
       end
       
 rescue
