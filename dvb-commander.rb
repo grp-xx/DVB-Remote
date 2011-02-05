@@ -92,25 +92,36 @@ end
 
 class Stream
         attr_accessor :program_name, :group, :ip_address, :port, :ttl, :sap_name
-        def initialize(mux,program_name,ip_address,port,ttl,sap_name,sap_group)
+        def initialize(mux,program_name,ip_address,port = 6666,ttl = 2,sap_name = program_name,sap_group = "TV")
                 @mux = mux
                 @program_name = program_name
                 @ip_address = ip_address
                 @port = port
                 @ttl = ttl
-                @sap_name = sap_name
+                @sap_name = @program_name
                 @sap_group = sap_group
         end
         def to_xml(doc)
-                program = Nokogiri::XML::Node.new('program', doc)
-                program_name = live_programs.create_element("program-name", @program_name)
-                destination = live_programs.create_element "destination"
-                ip_address = live_programs.create_element("ip-address", @ip_address)
-        
-                destination << ip_address
+                program = Nokogiri::XML::Node.new("program", doc)
+                        program_name = doc.create_element("program-name", @program_name)
+                        destination = doc.create_element "destination"
+                                ip_address = doc.create_element("ip-address", @ip_address)
+                                port = doc.create_element("port", @port)
+                                ttl = doc.create_element("ttl", @ttl)
+                                sap = doc.create_element("sap")
+                                        sap_name = doc.create_element("sap-name",@sap_name)
+                                        sap_group = doc.create_element("sap-group",@sap_group)
+                                sap << sap_name
+                                sap << sap_group        
+                                
+                        destination << ip_address
+                        destination << port
+                        destination << ttl
+                        destination << sap
         
                 program << program_name
                 program << destination    
+                return program
         end
                             
         def to_s
@@ -324,26 +335,29 @@ def add(channels, *data)
         live_file = File.open(XML_DEVICES_FILE,'r')
         tunes = Nokogiri::XML(live_file)
         live_file.close
+        tuned_mux = nil
+        tunes.xpath("/device-list/device/frequency").each do |node|
+                        tuned_mux = node.text
+                end
+                
         
-        tuned_mux = live_programs.xpath("/devices-list/device/frequency").text
-        
-        input_data = data.join(" ")  #no cosii' non va bene... non mi prende l'ultimo pezzo - va rivisto ma e' facile ;)
-        stream_to_add = input_data[0..input_data.length-2]
-        mcast_group = input_data[-1]
+        stream_to_add = data[0..data.length-2].join(" ")
+        mcast_group = data[-1]
         
                 
         mux = get_mux(channels, stream_to_add)
+        puts "Adding #{stream_to_add} at frequency #{mux} on multicast group #{mcast_group}"
         program_name = stream_to_add
         ip_address = mcast_group
         
         code = Code::ENAVAIL
         message = "Can't add stream \"#{stream_to_add}\""
         
-        if mux.include? tuned_mux then        
+        if mux.include?(tuned_mux) then        
                 new_stream = Stream.new(mux, program_name, ip_address)
                 program = new_stream.to_xml(live_programs)
                 live_programs.root << program
-                message = "Sussessfully added stream \"#{stream_to_drop}\""
+                message = "Sussessfully added stream \"#{stream_to_add}\""
                 code = Code::EOK
                 live_file = File.open(XML_PROGRAMS_FILE,'w')
                 live_programs.write_xml_to(live_file)

@@ -1,39 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <device-list>
 
-  <!--
-
-  List your DVB devices and their parameters in this file, with one
-  "<device>" section for each device. The parameters differ for
-  DVB-S/-S2/-C/-T and different DVB frontends may have varying
-  autodetection capabilities for certain parameters, so try setting
-  additional parameters if tuning doesn't work.
-
-  -->
 
   <device>
     <frontend>/dev/dvb/adapter0/frontend0</frontend>
     <demux>/dev/dvb/adapter0/demux0</demux>
     <dvr>/dev/dvb/adapter0/dvr0</dvr>
-
-    <!--
-
-    These are example parameters for use with DVB-T.
-
-    Usually, you only need to specify frequency and bandwidth, but
-    if you encounter problems, you might want to try the parameters below.
-
-    If you live near Munich, the example parameters might work for you. They
-    configure a channel containing an ARD multiplex containing the programs
-    "arte", "Phoenix", "EinsPlus" and "Das Erste" (as of 2010-08-27).
-
-    For Germany (and probably most of central Europe), the bandwidth
-    is 7 (MHz) for frequencies below 300 MHz and 8 (MHz) otherwise,
-    so if you change the frequency, don't forget to adjust the
-    bandwidth, too.
-
-    -->
-
     <frequency>754000000</frequency>
     <bandwidth>8</bandwidth>
 

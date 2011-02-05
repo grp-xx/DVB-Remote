@@ -46,4 +46,6 @@
     </destination>
   </program>
 
-</program-list>
+<program><program-name>CANALE 5</program-name><destination><ip-address>a.b.c.d</ip-address></destination></program>
+
+<program><program-name>Coming Soon</program-name><destination><ip-address>q.w.e.r</ip-address><port>6666</port><ttl>2</ttl><sap><sap-name>Coming Soon</sap-name><sap-group>TV</sap-group></sap></destination></program></program-list>
