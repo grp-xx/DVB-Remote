@@ -9,17 +9,21 @@ SERVER_IP_ADDRESS = "127.0.0.1"
 PORT = "8100"
 RUBY_TERMINAL = false
 XML_PROGRAMS_FILE = "programs.xml"
-XML_DEVICES_FILE = "device.xml"
+XML_DEVICES_FILE = "devices.xml"
 DVB_FRONTEND_0 = "/dev/dvb/adapter0/frontend0"
 DVB_DEMUX_0 = "/dev/dvb/adapter0/demux0"
 DVB_DVR_0 = "/dev/dvb/adapter0/dvr0"
 
-COMMANDER_COMMANDS = %w[help h list l search s mux m program p]
+COMMANDER_COMMANDS = %w[list l search s mux m program p]
 ALLOWED_STREAM_ACTIONS = %w[show live tune add remove]
 ALLOWED_SERVER_ACTIONS = %w[status start stop restart]
 
 HELP_COMMANDS = %w[help h]
 SERVER_COMMANDS = %w[server]
+# ALLOWED_COMMANDS = COMMANDER_COMMANDS + HELP_COMMANDS + SERVER_COMMANDS
+ALLOWED_COMMANDS = %w[help h server help h list l search s mux m program p]
+
+
 
 class Programs
   attr_accessor :name, :frequency, :inversion, :bandwidth, :code_rate_hp, :code_rate_lp, :constellation, :transmission_mode, :guard_interval, :hierarchy_information, :apid, :vpid, :tpid
@@ -97,6 +101,18 @@ class Stream
                 @sap_name = sap_name
                 @sap_group = sap_group
         end
+        def to_xml(doc)
+                program = Nokogiri::XML::Node.new('program', doc)
+                program_name = live_programs.create_element("program-name", @program_name)
+                destination = live_programs.create_element "destination"
+                ip_address = live_programs.create_element("ip-address", @ip_address)
+        
+                destination << ip_address
+        
+                program << program_name
+                program << destination    
+        end
+                            
         def to_s
                 "Stream name: #{@program_name}\n" + "Mux: #{@mux}\n" + "IP Address: #{@ip_address}\n" + "Port: #{@port}\n" + "TTL: #{@ttl}\n" + "SAP Name: #{@sap_name}\n" + "SAP Group: #{@sap_group}\n"
         end
@@ -129,7 +145,7 @@ class Task
       # end
       
      def self.finalize(pid)   # Class method used to finalize!!!! in case the oject gets garbage collected...
-            proc { |id|  begin Process.kill('TERM',pid) rescue end } 
+            proc { |pid|  begin Process.kill('TERM', pid) rescue puts "DVB Streaming Server Killed" end} # Can be catched this way:  rescue  end } 
      end
       
 end
@@ -279,7 +295,6 @@ def nowplaying(channels)
                         mux = get_mux(channels,node.text)
                         live_streams << Stream.new(mux,node.text,node.parent.xpath('./destination/ip-address').text,node.parent.xpath('./destination/port').text,node.parent.xpath('./destination/ttl').text,node.parent.xpath('./destination/sap/name').text,node.parent.xpath('./destination/sap/group-name').text)
                 end
-        puts live_streams
         return live_streams
 end
 
@@ -299,8 +314,45 @@ def show(channels)
         return msg    
 end
 
+
 def add(channels, *data)
         
+        live_file = File.open(XML_PROGRAMS_FILE,'r')
+        live_programs = Nokogiri::XML(live_file)
+        live_file.close
+        
+        live_file = File.open(XML_DEVICES_FILE,'r')
+        tunes = Nokogiri::XML(live_file)
+        live_file.close
+        
+        tuned_mux = live_programs.xpath("/devices-list/device/frequency").text
+        
+        input_data = data.join(" ")  #no cosii' non va bene... non mi prende l'ultimo pezzo - va rivisto ma e' facile ;)
+        stream_to_add = input_data[0..input_data.length-2]
+        mcast_group = input_data[-1]
+        
+                
+        mux = get_mux(channels, stream_to_add)
+        program_name = stream_to_add
+        ip_address = mcast_group
+        
+        code = Code::ENAVAIL
+        message = "Can't add stream \"#{stream_to_add}\""
+        
+        if mux.include? tuned_mux then        
+                new_stream = Stream.new(mux, program_name, ip_address)
+                program = new_stream.to_xml(live_programs)
+                live_programs.root << program
+                message = "Sussessfully added stream \"#{stream_to_drop}\""
+                code = Code::EOK
+                live_file = File.open(XML_PROGRAMS_FILE,'w')
+                live_programs.write_xml_to(live_file)
+                live_file.close
+                end
+       
+        msg = Message.new(code)
+        msg.fill(message)
+        return message
 end
 
 def remove(channels, *data)
@@ -342,7 +394,7 @@ def program(channels, *params)
         
         case
                 when params.length == 1
-                        if ALLOWED_STREAM_ACTIONS.include?(action) then
+                        if ALLOWED_STREAM_ACTIONS.include?(action) then                                
                                 msg = send(action.to_sym,channels)
                                 # msg = Message.new(Code::EOK)
                                 # msg.fill(response)
@@ -364,7 +416,7 @@ def program(channels, *params)
                                 msg.fill(response)
                         end
                 else
-                        msg = Message.new()
+                        msg = Message.new()                        
                         msg.fill(nowplaying(channels).to_s)
         end
                 
@@ -479,7 +531,7 @@ def start_ruby_cli(channels,server,client,streaming_server,line)
               when (COMMANDER_COMMANDS.include? command) 
                       response = commanders(channels,line)
                       Marshal::dump(response,client)
-                      streaming_server = response.content if response.type == 'Code::PID'
+                      # streaming_server = response.content if response.type == 'Code::PID'
                       
               when (HELP_COMMANDS.include? command)
                       Marshal::dump(helpers(line),client)
@@ -583,8 +635,8 @@ begin
 rescue
       STDERR.puts "Connection to client closed"
       STDOUT.puts "DVB Commander listenining on TCP port #{PORT}" if server != nil
-      # raise    # uncomment to debug
-      retry     # comment to debug
+       raise    # uncomment to debug
+      # retry     # comment to debug
 end
 
   
